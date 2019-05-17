@@ -568,7 +568,8 @@ def match_names (all_repos, name_string):
 import glob
 from fnmatch import fnmatchcase as wildmatch
 from collections import OrderedDict
-
+import re
+is_hex = re.compile("^[0-9a-fA-F]+$").match
 
 
 class App (object):
@@ -970,21 +971,67 @@ class App (object):
         else:
           git.run_show(["checkout",checkout], check=True)
       else:
-        for rem,is_tag in remote_prefs:
-          r = git.run(["branch",checkout,rem], stdouterr_together=True, check=False)
-          if r.returncode == 0:
-            git.run(["checkout", checkout], check=True)
-            llog.info("Checked out %s '%s'", "tag" if is_tag else "branch", checkout)
-            break
-          llog.debug("Couldn't create local branch for checkout '%s'", rem)
+        def check_branch ():
+          for rem,is_tag in remote_prefs:
+            r = git.run(["branch",checkout,rem], stdouterr_together=True, check=False)
+            if r.returncode == 0:
+              git.run(["checkout", checkout], check=True)
+              llog.info("Checked out %s '%s'", "tag" if is_tag else "branch", checkout)
+              break
+            llog.debug("Couldn't create local branch for checkout '%s'", rem)
+          else:
+            return False
+          return True
+
+        def check_hash ():
+          r = git.run_hide(["checkout",checkout], check=False)
+          if r != 0: return False
+          h = git.current_hash
+          ch = "checkout_" + h
+          if ch in git.local_branches:
+            git.run_hide(["checkout",ch], check=True)
+            if git.current_hash != h:
+              raise SimpleError("Head of branch %s doesn't have hash %s!",
+                                ch, h)
+            llog.info("Checked out existing checkout branch '%s'", ch)
+          else:
+            git.run_hide(["checkout","-b",ch], check=True)
+            llog.info("Checked out new checkout branch '%s'", ch)
+          return True
+
+        if is_hex(checkout) and len(checkout) == 40:
+          # Looks like a sha1; only try matching as hash
+          success = check_hash()
+        elif is_hex(checkout):
+          success = check_branch()
+          if not success:
+            success = check_hash()
         else:
-          raise SimpleError("Could not create local checkout branch '%s'" % (checkout,))
+          success = check_branch()
+
+        if not success:
+          raise SimpleError("Could not check out '%s'" % (checkout,))
     elif git.is_detached:
-      llog.info("Currently is curently detached (checkout is '%s')",
+      llog.info("Repository is curently detached (checkout is '%s')",
                 proxy.checkout)
     elif git.current_branch != proxy.checkout:
-      llog.info("Currently on branch '%s' (checkout is '%s')",
-                git.current_branch, proxy.checkout)
+      pc = proxy.checkout.lower()
+      log_wrong = False
+      if is_hex(pc):
+        if git.current_hash == pc:
+          pass # All good
+        elif git.current_hash.startswith(pc):
+          llog.debug("Currently on branch '%s' which looks like it "
+                     "corresponds to checkout hash '%s'", git.current_branch,
+                     pc)
+        else:
+          log_wrong = True
+      else:
+        log_wrong = True
+
+      if log_wrong:
+        llog.info("Currently on branch '%s' (checkout is '%s')",
+                  git.current_branch, proxy.checkout)
 
 
 
