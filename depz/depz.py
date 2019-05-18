@@ -666,7 +666,13 @@ class App (object):
 
 
   def for_each_repo (self, f, **kw):
+    funcname = getattr(f, "__name__", "")
+    if funcname.startswith("do_"):
+      funcname = funcname[3:]
+    else:
+      funcname = None
     def for_each_func ():
+      if funcname: log.debug("Running function %s", funcname)
       for i,(rname,rr) in enumerate(self.all_repos.items()):
         if rname in self.error_repos: continue
         try:
