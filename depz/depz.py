@@ -13,6 +13,10 @@
 # fast_forward_skip - Don't try to fast forward
 # monitor_branch=br1,br2,br3 # Local branches to check for updates and FF
 # no_tags - don't fetch tags
+# init_archive - Initialize from an archive file
+# init_archive_sha1 - Check hash of init_archive
+# init_archive_sha256 - Check hash of init_archive
+# init_archive_sha512 - Check hash of init_archive
 
 
 
@@ -421,9 +425,104 @@ class ChDir (object):
     os.chdir(self.previous)
 
 
+import urllib.request
+import shutil
+import tempfile
+import os
+import hashlib
+
+def get_archive (url, dst, denest=True, sha1=None, sha256=None, sha512=None):
+  """
+  Download an archive at 'url' into directory 'dst'.
+
+  'dst' needs to be empty with the sole except that it can contain an entry
+  named ".git".
+
+  An entry at the top of the archive named ".git" will be ignored.
+
+  It's often the case that an archive contains a single top-level item -- a
+  directory that contains the rest of the contents.  If 'denest' is True (the
+  default), the top level directory will be ignored and its *contents* will be
+  put into 'dst'.
+  """
+  denest_dir = None
+  final_url = None
+
+  if not os.path.isdir(dst):
+    raise RuntimeError("Destination directory '%s' does not exist" % (dst,))
+  dst_listing = os.listdir(dst)
+  if dst_listing:
+    if len(dst_listing) == 1 and dst_listing[0] == ".git":
+      pass # Okay
+    else:
+      raise RuntimeError("Destination directory not empty")
+
+  with tempfile.NamedTemporaryFile() as temp_file:
+    with urllib.request.urlopen(url) as response:
+      shutil.copyfileobj(response, temp_file)
+      final_url = response.geturl()
+
+      hashers = []
+      if sha1: hashers.append((hashlib.sha1(),sha1))
+      if sha256: hashers.append((hashlib.sha256(),sha256))
+      if sha512: hashers.append((hashlib.sha512(),sha512))
+      if hashers:
+        with open(temp_file.name, 'rb') as check_file:
+          while True:
+            data = check_file.read(1024*64)
+            if not data: break
+            for h,_ in hashers:
+              h.update(data)
+        for h,good_hash in hashers:
+          if h.hexdigest().lower() != good_hash.lower():
+            raise RuntimeError("Hash did not match")
+
+    def find_format (extmatch):
+      for fmt,exts,_ in shutil.get_unpack_formats():
+        for ext in exts:
+          if extmatch.endswith(ext.lower()):
+            return fmt
+      return None
+
+    fmt = find_format(url.lower())
+    if not fmt:
+      if final_url:
+        fmt = find_format(final_url.lower())
+      if not fmt:
+        raise RuntimeError("Can't determine archive type for '%s'" % (url,))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+      assert not os.listdir(temp_dir)
+      shutil.unpack_archive(temp_file.name, temp_dir, fmt)
+
+      listing = os.listdir(temp_dir)
+      if not listing:
+        raise RuntimeError("Archive seems to be empty")
+
+      src = temp_dir
+      if denest and len(listing) == 1:
+        nest_dir = os.path.join(temp_dir, listing[0])
+        if os.path.isdir(nest_dir):
+          src = nest_dir
+          denest_dir = listing[0]
+
+      for src_element in os.listdir(src):
+        if src_element == ".git": continue
+        full_src_element = os.path.join(src, src_element)
+        full_dst_element = os.path.join(dst, src_element)
+        if os.path.isdir(full_src_element):
+          shutil.copytree(full_src_element, full_dst_element)
+        elif os.path.islink(full_src_element):
+          pass # Just ignore (for now?)
+        else:
+          shutil.copy2(full_src_element, full_dst_element)
+
+  return (denest_dir,final_url or url)
+
 
 class SimpleError (RuntimeError):
   pass
+
 
 DEFAULT_REPO = """
 
@@ -698,6 +797,66 @@ class App (object):
     for k,v in sorted(list(rr.items())):
       print("%s=%s" % (k,v))
 
+  @staticmethod
+  def _get_archive_log_kvs (raw_log):
+    """
+    Parse a depz-generated log message
+
+    When depz initializes a repo based on an archive, it creates a commit of
+    a specific form.  This form has a specific author email address, a
+    specific "subject" line of the commit message, and then possibly a number
+    of key-value pairs (this can be read by using the %ae%n%B git log format).
+    This method checks that the log message is valid, returns None of it is
+    not, and returns a dictionary of key-value pairs if it is.
+    """
+    log_message = strsplit(raw_log, "\n", 2)
+    if len(log_message) != 3: return None
+    _,email,subject = log_message
+    if "\n" in subject:
+      subject,message = subject.split("\n",1)
+    else:
+      message = ''
+
+    subject = subject.strip()
+
+    if email != "depz@depz.invalid": return None
+    if subject != "Initial commit from archive by depz": return None
+
+    message = strsplit(message.strip())
+    kvs = {}
+    for kv in message:
+      kv = kv.split("=",1)
+      if len(kv) == 1:
+        kvs[kv[0]] = True
+      else:
+        kvs[kv[0]] = kv[1]
+
+    return kvs
+
+  @classmethod
+  def _sanity_check_archive_repo (cls, git, rr):
+    """
+    Check if an archive-derived repo is sane
+
+    Returns True if the repo does seem to be based on the config.
+    Returns an error string otherwise.
+    """
+    first_log = git.run_capture("rev-list --max-parents=0 HEAD "
+                                "--format=format:%ae%n%B",
+                                check=False)
+    kvs = cls._get_archive_log_kvs(first_log)
+    if kvs is None or "init_archive" not in kvs:
+      return ("Repository's current branch does not start with a depz "
+              "archive log entry")
+
+    for k,v in kvs.items():
+      if rr.get(k,None) != v:
+        return ("Repository seems mismatched with configured archive; "
+                "key '%s' does not match" % (k,))
+
+    # All keys match
+    return True
+
   def do_sanity_check (self, rname, rr):
     """
     Sanity checks the repo
@@ -725,18 +884,33 @@ class App (object):
     rremotes = git.remotes
     rurls = {x:k for k,x in rremotes.items()} # url->remote-name
 
-    if not rremotes:
-      raise SimpleError("Repo has no remotes configured")
+    if not remotes and rr.get("init_archive",False):
+      # We can't check that this archive is set up correctly by comparing
+      # remotes because the config file doesn't specify any remotes!  So it's
+      # probably an archive-only repo.  We can sanity check that the current
+      # branch corresponds to the specified archive, though, so let's do that.
 
-    if set(urls.keys()).intersection(rurls.keys()):
-      pass
-    else:
-      raise SimpleError("Repo unusable because it exists but doesn't "
-                        "seem related to the depz information")
+      tmp = self._sanity_check_archive_repo(git, rr)
+      if tmp is True:
+        if not args.init:
+          llog.debug("Repository seems to be derived from archive")
+      else:
+        llog.warn("Repository does not seem to be derived from archive: %s",
+                  tmp)
 
-    if set(remotes.keys()).difference(rremotes.keys()):
-      missing = sorted(set(remotes.keys()).difference(rremotes.keys()))
-      llog.warn("Repo is missing remote: %s", " ".join(missing))
+    else: # Not a remoteless archive
+      if not rremotes:
+        raise SimpleError("Repo has no remotes configured")
+
+      if set(urls.keys()).intersection(rurls.keys()):
+        pass
+      else:
+        raise SimpleError("Repo unusable because it exists but doesn't "
+                          "seem related to the depz information")
+
+      if set(remotes.keys()).difference(rremotes.keys()):
+        missing = sorted(set(remotes.keys()).difference(rremotes.keys()))
+        llog.warn("Repo is missing remote: %s", " ".join(missing))
 
   def do_early_sanity_check (self, r, rr):
     """
@@ -768,8 +942,13 @@ class App (object):
       k = k.split(None,1)
       if len(k) > 1 and k[0] == "remote": break
     else:
-      log.error("Skipping repo %s because it has no remotes", r)
-      self.add_error_repo(r)
+      if "init_archive" in  rr:
+        #log.warn("Repo %s has no remotes, which is not recommended, but is "
+        #         "being allowed since it has an init_archive", r)
+        log.info("Repo %s is archive-only (it has no remotes)", r)
+      else:
+        log.error("Skipping repo %s because it has no remotes", r)
+        self.add_error_repo(r)
 
   def do_update (self, rname, rr):
     llog = log.getChild(rname)
@@ -937,14 +1116,21 @@ class App (object):
       rremotes = git.remotes
       rurls = {x:k for k,x in rremotes.items()} # url->remote-name
 
-      if not rremotes:
-        if not git.run_capture("show-ref --hash HEAD", check=False):
+      if not remotes and rr.get("init_archive",False):
+        tmp = self._sanity_check_archive_repo(git, rr)
+        if tmp is True:
+          llog.debug("Repository seems to be derived from archive")
+        else:
+          raise SimpleError("Repository does not seem to be derived from "
+                            "archive: %s" % (tmp,))
+      elif not rremotes:
+        if git.is_empty_branch and git.is_clean:
           # No remotes and no commits
           llog.debug("Appears to be an empty git repo; will initialize it")
           create = True
         else:
-          raise SimpleError("Repo is unusable because it has commits but no "
-                            "remotes")
+          raise SimpleError("Repo is unusable because it has commits and/or "
+                            "staged changes but no remotes")
       elif set(urls.keys()).intersection(rurls.keys()):
         # At least one common remote -- we can use it
         pass
@@ -1033,7 +1219,37 @@ class App (object):
           success = check_branch()
 
         if not success:
-          raise SimpleError("Could not check out '%s'" % (checkout,))
+          init_archive = rr.get("init_archive",None)
+          if init_archive:
+            llog.debug("Attempting to initialize from archive '%s'",
+                       init_archive)
+            sha1 = rr.get("init_archive_sha1",None)
+            sha256 = rr.get("init_archive_sha256",None)
+            sha512 = rr.get("init_archive_sha512",None)
+            try:
+              get_archive(init_archive, git.path,
+                          sha1=sha1,sha256=sha256,sha512=sha512)
+              git.run_hide(["checkout","-b",checkout], check=True)
+              git.run_hide("add .", check=True)
+              message = "Initial commit from archive by depz\n"
+              message += "\nname=" + rname
+              message += "\ninit_archive=" + init_archive
+              if sha1:   message += "\ninit_archive_sha1="   + sha1
+              if sha256: message += "\ninit_archive_sha256=" + sha256
+              if sha512: message += "\ninit_archive_sha512=" + sha512
+
+              git.run_hide(["-c","user.name=depz",
+                            "-c","user.email=depz@depz.invalid",
+                            "commit","-m",message,
+                            "--author=depz <depz@depz.invalid>"],
+                           check=True)
+            except Exception:
+              llog.error("Exception while trying to initialze from archive "
+                         "'%s'", init_archive)
+              raise
+            llog.info("Initialized from archive '%s'", init_archive)
+          else:
+            raise SimpleError("Could not check out '%s'" % (checkout,))
     elif git.is_detached:
       llog.info("Repository is curently detached (checkout is '%s')",
                 proxy.checkout)
@@ -1083,12 +1299,23 @@ class Git (object):
       ret[name] = url
     return ret
 
+  # The code below has problems when there are no commits yet...
+  #@property
+  #def has_uncomitted (self):
+  #  r = self.run("diff-index --quiet HEAD --", stdouterr_together=True,
+  #               check=False)
+  #  if r.stdout.strip() == "fatal: bad revision 'HEAD'": return 3 #False
+  #  return r.returncode != 0
+
   @property
-  def has_uncomitted (self):
-    r = self.run("diff-index --quiet HEAD --", stdouterr_together=True,
-                 check=False)
-    if r.stderr.strip() == "fatal: bad revision 'HEAD'": return False
-    return r.returncode != 0
+  def is_clean (self):
+    """
+    Clean if there are no modified or new files, etc. (status is empty)
+    """
+    r = self.run_capture("status --porcelain", check=True)
+    r = strsplit(r, "\n")
+    r = [x for x in r if not x.startswith("#")]
+    return False if r else True
 
   @property
   def remotes (self):
