@@ -778,21 +778,30 @@ class App (object):
       return
 
     git = Git(rr.val.full_directory)
+    rremotes = git.remotes
+    if not rremotes:
+      llog.debug("Repository has no remotes")
+      return
     success = False
     errs = []
     err_remotes = []
-    for rem,url in git.remotes.items():
+    for rem,url in rremotes.items():
       llog.info("Updating remote '%s' (%s)", rem, url)
       #r = git.run_show(["remote","update",rem], check=False)
       r = git.run(["remote","update",rem], stdouterr_together=True, check=False)
       if r.returncode == 0:
         success = True
       else:
-        errs.append(r.stdout)
+        errs.append(r.stdout.strip())
         err_remotes.append(rem)
         llog.warn("Updating remote %s failed with code %s" % (rem,r.returncode))
     if not success:
-      llog.error("All remotes failed to update.  git output:\n"+"\n".join(errs))
+      git_out = "\n".join(errs)
+      if git_out:
+        git_out = "\n" + git_out
+      else:
+        git_out = " <None>"
+      llog.error("All remotes failed to update.  git output:" + git_out)
       raise SimpleError("All remotes failed to update")
     #elif errs:
     #  llog.info("Some remotes failed to update: %s", " ".join(err_remotes))
@@ -812,6 +821,7 @@ class App (object):
 
     def check (branch, compares):
       success = False
+      all_current = True
       for c in compares:
         cmd = ["rev-list","--left-right","--count","%s...%s"%(branch,c)]
         try:
@@ -824,6 +834,7 @@ class App (object):
         ahead=int(o[0])
         behind=int(o[1])
         if ahead==0 and behind==0: continue
+        if behind>0: all_current=False
         if ahead>0 and behind>0:
           llog.warn("Current branch %s is %s commits behind %s (and %s ahead)", branch, behind, c, ahead)
         elif behind>0:
@@ -864,8 +875,6 @@ class App (object):
           pass
       else:
         llog.warn("Couldn't tell if anything was outdated.  Are there working remotes?")
-    else:
-      llog.debug("Seems to be up to date")
 
   def do_fast_forward (self, rname, rr):
     llog = log.getChild(rname)
