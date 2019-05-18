@@ -665,6 +665,10 @@ class App (object):
   def set_next_command (self, c):
     self.commands.insert(0, c)
 
+  def _get_conf_remotes (self, rr):
+    remotes = {k.split(None,1)[1]:v for k,v in rr.items()
+               if k.split(None,1)[0] == "remote"}
+    return remotes
 
   def for_each_repo (self, f, **kw):
     funcname = getattr(f, "__name__", "")
@@ -714,8 +718,7 @@ class App (object):
     if not git.is_valid:
       raise SimpleError("Does not seem to be a valid git repository")
 
-    remotes = {k.split(None,1)[1]:v for k,v in rr.items()
-               if k.split(None,1)[0] == "remote"}
+    remotes = self._get_conf_remotes(rr)
     urls = {x:k for k,x in remotes.items()}
 
     # Remotes in repo
@@ -918,8 +921,7 @@ class App (object):
     else:
       # It looks like a git repo.  Is it the right one?
       # Desired remotes
-      remotes = {k.split(None,1)[1]:v for k,v in rr.items()
-                 if k.split(None,1)[0] == "remote"}
+      remotes = self._get_conf_remotes(rr)
       urls = {x:k for k,x in remotes.items()}
 
       # Remotes in repo
@@ -943,8 +945,8 @@ class App (object):
 
     if git.run_hide("init", check=False) != 0:
       raise SimpleError("git init failed")
-    remotes = {k.split(None,1)[1]:v for k,v in rr.items()
-               if k.split(None,1)[0] == "remote"}
+
+    remotes = self._get_conf_remotes(rr)
     rremotes = git.remotes
     for remote in set(remotes.keys()).difference(rremotes.keys()):
       llog.info("Adding missing remote '%s' -> %s", remote, remotes[remote])
