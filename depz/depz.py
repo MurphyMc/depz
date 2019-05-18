@@ -8,6 +8,7 @@
 # checkout_remote - list of remotes to try
 
 # Other keys
+# skip - Skip archive altogether
 # update_skip - Don't try to update
 # fast_forward_skip - Don't try to fast forward
 # monitor_branch=br1,br2,br3 # Local branches to check for updates and FF
@@ -741,6 +742,11 @@ class App (object):
     This is basically checking the keys of the entry to make sure they're sane
     (and that ones we expect to be there are there).
     """
+    if rr.get("skip",False):
+      log.debug("Skipping repo %s due to configuration", r)
+      self.add_error_repo(r)
+      return
+
     for attr in "full_directory name type remote_name checkout checkout_remote group".split():
       if attr not in rr:
         log.error("Skipping repo %s because it has no '%s'", r, attr)
