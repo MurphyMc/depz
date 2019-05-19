@@ -535,10 +535,29 @@ example, might look like this:
 prefix=https://github.com/AbePralle
 ```
 
-That's enough to get started!  If we wanted to add another remote, you'd just
-add an appropriate `remote` key:
+That's enough to get started!
+
+To see how this works, it may be useful to manually "merge in" some of the
+settings which are included automatically from the `[DEFAULT REPO]` section
+shown above (note that you don't have to actually do this; it is shown here
+only for illustration):
+```
+[REPO rogue]
+name=${_NAME_}
+remote_name=${name}
+remote origin=${prefix}/${remote_name}
+checkout=master
+```
+
+If we wanted to add another remote, it's a simple matter of adding an
+appropriate `remote` key:
 ```
 remote murphymc=https://github.com/MurphyMc/rogue
+```
+
+Or perhaps:
+```
+remote murphymc=https://github.com/MurphyMc/${remote_name}
 ```
 
 ## Initializing a Repository from an Archive
