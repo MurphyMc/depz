@@ -845,6 +845,8 @@ class App (object):
     message = strsplit(message.strip())
     kvs = {}
     for kv in message:
+      kv = kv.lstrip()
+      if kv.startswith("#"): continue
       kv = kv.split("=",1)
       if len(kv) == 1:
         kvs[kv[0]] = True
