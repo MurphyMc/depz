@@ -560,6 +560,84 @@ Or perhaps:
 remote murphymc=https://github.com/MurphyMc/${remote_name}
 ```
 
+## Using Deploy Keys
+
+GitHub has a feature called Deploy Keys which let you set ssh keys that are
+specific to an individual repository.  These keys can be set to be read only
+or read/write.  This is a nice way to have fine grained access to private
+repositories from not-especially-trusted machines without having to store
+real credentials on the remote machine or use wildly unsafe ssh agent
+forwarding.
+
+Deploy keys are specific to a given remote (thus, you can have different
+deploy keys for different remotes, i.e., one for your organization's
+fork and one for your own fork).  You enable them by setting the
+`deploy_key <remote-name>` key in your repo config to `true`.  Thus, you
+might have a config file like:
+```
+[REPO pox]
+remote upstream=git@github.com:noxrepo/pox
+deploy_key upstream=true
+prefix=https://github.com/YourNameHere
+```
+
+Note that in this case, it's the `upstream` remote that is using a deploy key.
+If you wanted to do it with the remote set up by the `prefix` key, you'd use
+`deploy_key origin=true`.  See the previous section if you need a reminder
+why this is the case.
+
+Also note that the remote _must be using an ssh URL_ because deploy keys are
+ssh keys!  An http/https URL won't work.
+
+Once you have this set, running `--init` will now generate a new key pair
+for the remote called `depz_deploy_key.upstream.private` and
+`depz_deploy_key.upstream.pub` (where `upstream` will be whatever the
+remote is named).  These are stored in the repository base directory.  If
+run in interactive mode, before trying to fetch the remote for the first
+time, depz will display the public key and pause until you press enter.
+At this point, you can do one of two things:
+
+* Copy and paste the public key into the repository's configuration on
+  GitHub.  The URL to the appropriate configuration page is hopefully
+  shown.
+* Replace the new key pair with a key pair of your own.  If you've
+  already got one you want to use, this makes sense, but see the next
+  subsection.
+
+Note that depz adds files matching the pattern `depz_deploy_key.*` to the
+repository's `exclude` file in order to help you _not commit these to the
+repo_, because you really probably don't want to do that.
+
+From now on, depz will try to use these key files when communicating with
+the specified remote.
+
+### Using a Pre-Existing Key Pair
+
+The previous example showed how to get depz to generate a new key pair
+for you by setting the `deploy_key <remote-name>` entry to `true`.  You
+can also set this entry to the base filename of an existing key pair.
+If you do this, during `--init`, depz will take that base filename,
+append `.pub` and `.private` to it, and _copy_ those files into the
+repository to the appropriate `depz_deploy_key.*` files.
+
+### Using Deploy Keys with Manual Git
+
+While depz knows to use the deploy keys, git itself doesn't if you just run
+git commands by hand.  You can refer to the Internet to see how to configure
+git to use an arbitrary key file -- there are several ways, both via
+messing with ssh's config or via messing with git's config.
+
+One way to do it -- which only really makes sense if you have a single
+ssh remote -- is to configure the repository to always try to use the deploy
+key when doing ssh.  This is basically a matter of setting the `sshCommand`
+git configuration property to a commandline for ssh that includes the `-i`
+option to specify a key.  To save you the effort, the depz `--set-ssh-cmd`
+option does exactly this.  After this, git commands in this repository
+which use ssh remotes should use the deploy key.  However, note that
+the `sshCommand` configuration key is only available in git 2.10 and
+above.  If you're using an older version of git, you'll have to work
+out another solution.
+
 ## Initializing a Repository from an Archive
 
 Sometimes you want a project to use code that's available in an archive file

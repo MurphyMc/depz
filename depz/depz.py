@@ -638,6 +638,13 @@ def main ():
      help="Show possibly outdated repositories.")
   p.add_argument("--fast-forward", "--ff", action="store_true",
      help="Fast forward merge repositories.")
+  p.add_argument("--set-ssh-cmd", action="store_true",
+     help="Set the default ssh command for the repository to use a deploy "
+          "key (git 2.10 and above).")
+  p.add_argument("--force-deploy-keys", type=bool,
+     const=False, default=None, nargs='?',
+     help="Can be true (default) or false.  Attempts to force using or not "
+          "using deploy keys.  Be careful.")
 
 
   args = p.parse_args()
@@ -752,6 +759,9 @@ class App (object):
     self.add_command(self.for_each_repo(self.do_early_sanity_check))
     if args.init: self.add_command(self.for_each_repo(self.do_init))
     self.add_command(self.for_each_repo(self.do_sanity_check))
+    if args.set_ssh_cmd:
+      self.add_command(self.for_each_repo(self.do_set_ssh_cmd))
+
     if 'late' in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
     if args.update:
@@ -788,10 +798,23 @@ class App (object):
       self.commands[priority] = []
     self.commands[priority].append(c)
 
-  def _get_conf_remotes (self, rr):
+  @staticmethod
+  def _get_conf_remotes (rr):
     remotes = {k.split(None,1)[1]:v for k,v in rr.items()
                if k.split(None,1)[0] == "remote"}
     return remotes
+
+  @staticmethod
+  def _get_conf_remote_uses_deploy_key (rr, remote):
+    if args.force_deploy_keys is not None:
+      return args.force_deploy_keys
+    dks = {k.split(None,1)[1]:v for k,v in rr.items()
+           if k.split(None,1)[0] == "deploy_key"}
+    dk = dks.get(remote)
+    if dk is None: return False
+    if _to_bool(dk): return True
+    if os.path.isfile(dk+".pub") and os.path.isfile(dk+".private"): return dk
+    return False
 
   def for_each_repo (self, f, **kw):
     funcname = getattr(f, "__name__", "")
@@ -820,6 +843,130 @@ class App (object):
     print("[%s]" % (rname,))
     for k,v in sorted(list(rr.items())):
       print("%s=%s" % (k,v))
+
+  @classmethod
+  def _get_ssh_cmd (cls, git, rname, rr, rem):
+    if not cls._get_conf_remote_uses_deploy_key(rr, rem): return None
+    if not git.has_deploy_key(rem): return None
+
+    keyfile_base = os.path.join(git.path, "depz_deploy_key")
+    keyfile_base += "." + rem.replace(" ","-")
+    if '"' in keyfile_base or '$' in keyfile_base:
+      log.getChild(rname).error("Can't set ssh command because path looks funny")
+      return None
+    cmd = 'ssh -i "%s.private" -F /dev/null' % (keyfile_base,)
+    return cmd
+
+  def do_set_ssh_cmd (self, rname, rr):
+    git = Git(rr.val.full_directory)
+
+    for remote in git.remotes.keys():
+      newsshcmd = self._get_ssh_cmd(git, rname, rr, remote)
+      if not newsshcmd: continue
+
+      sshcmd = git.conf.get("core.sshCommand")
+      if sshcmd and sshcmd != newsshcmd:
+        llog.warn("ssh command is already set; not resetting")
+        return False
+      elif not sshcmd:
+        git.conf["core.sshCommand"] = newsshcmd
+        llog.info("Set SSH command to use deploy key for %s", remote)
+        return True
+      else:
+        llog.debug("SSH command already using deploy key")
+        return True
+
+    return False
+
+  def _gen_deploy_key (self, git, rname, rr, remote, url=None):
+    llog = log.getChild(rname)
+    git.check_toplevel()
+
+    if url is None:
+      url = git.remotes.get(remote, None)
+      if url is None:
+        url = self._get_conf_remotes(rr).get(remote, None)
+        if url is None:
+          raise SimpleError("Unknown remote '%s'" % (remote,))
+
+    if url.startswith("git@") or url.startswith("ssh:"):
+      # This is pretty bad ssh URL detection...
+      pass
+    else:
+      llog.warn("Not generating deploy key for non-ssh remote")
+      return False
+
+    created = False
+
+    keyfile_base = git.get_keyfile_base(remote)
+    if (os.path.exists(keyfile_base) or os.path.exists(keyfile_base+".pub")
+        or os.path.exists(keyfile_base+".private")):
+      # Something exists... is it the right stuff?
+      if (os.path.exists(keyfile_base+".private")
+          and os.path.exists(keyfile_base+".pub")
+          and not os.path.exists(keyfile_base)):
+        llog.debug("%s files look good", keyfile_base)
+      else:
+        raise SimpleError(keyfile_base + " files seem misconfigured")
+    else:
+      keyname = ("depz_deploy_key_%s_%s" % (rname, remote)).replace(" ", "-")
+      cmd = ["ssh-keygen","-t","rsa","-b","4096","-N","","-q","-C",keyname]
+      cmd += ["-f",keyfile_base]
+
+      r = subprocess.run(cmd, check=False)
+      if r.returncode != 0:
+        llog.error("Key generation failed")
+
+      if os.path.exists(keyfile_base) and os.path.exists(keyfile_base+".pub"):
+        llog.debug("Key files created")
+      else:
+        raise SimpleError("Key files not created")
+
+      os.rename(keyfile_base, keyfile_base + ".private")
+
+      created = True
+
+    excludes = open(os.path.join(git.path,".git/info/exclude"), "r").read()
+    excludes = excludes.split("\n")
+    exclude_entry = "**/depz_deploy_key.*"
+    if exclude_entry not in excludes:
+      with open(os.path.join(git.path,".git/info/exclude"), "a") as ef:
+        ef.write(exclude_entry + "\n")
+      llog.info("Added %s to git excludes", exclude_entry)
+    else:
+      llog.debug("Exclude entry %s already in git excludes", exclude_entry)
+
+    # Take a guess at the remote (truly bad)
+    def get_desc (r):
+      url = None
+      if r.startswith("git@github.com:"):
+        url = "https://github.com/" + r.split(":",1)[1]
+      elif r.startswith("ssh://") and "github.com/" in r:
+        url = "https://github.com/" + r.split("/",3)[3]
+
+      r = "%s remote %s" % (rname, remote)
+      if url:
+        url = url.rstrip("/")
+        if url.endswith(".git"): url = url[:-4]
+        url += "/settings/keys/new"
+        r = "%s (%s)" % (r, url)
+
+      return r
+    desc = get_desc(url)
+
+    pub = open(keyfile_base+".pub", "r").read().strip()
+    if not pub:
+      raise SimpleError("Public key is missing!")
+
+    def output ():
+      print("\nDeploy key for %s:" % (desc,))
+      print(pub)
+      print()
+
+    if created:
+      llog.info("Created deploy key for remote '%s'", remote)
+
+    return output
 
   @staticmethod
   def _get_archive_log_kvs (raw_log):
@@ -991,9 +1138,13 @@ class App (object):
     errs = []
     err_remotes = []
     for rem,url in rremotes.items():
-      llog.info("Updating remote '%s' (%s)", rem, url)
+      sshcmd = self._get_ssh_cmd(git,rname,rr,rem)
+      add_env = {'GIT_SSH_COMMAND':sshcmd} if sshcmd else None
+      use_dk = " using deploy key" if sshcmd else ""
+
+      llog.info("Updating remote '%s' (%s)%s", rem, url, use_dk)
       #r = git.run_show(["remote","update",rem], check=False)
-      r = git.run(["remote","update",rem], stdouterr_together=True, check=False)
+      r = git.run(["remote","update",rem], stdouterr_together=True, check=False, add_env=add_env)
       if r.returncode == 0:
         success = True
       else:
@@ -1121,13 +1272,20 @@ class App (object):
     git = Git(proxy.full_directory)
     llog.debug("Initializing repo %s", rname)
 
+    def check_emptyish (files):
+      files = set(files)
+      for f in "depz_deploy_key.private depz_deploy_key.pub".split():
+        files.discard(f)
+      if files: return False
+      return True
+
     if not os.path.exists(git.path):
       llog.debug("Making directory %s", git.path)
       os.makedirs(git.path, exist_ok=True)
     elif not os.path.isdir(git.path):
       raise SimpleError("Path for repo exists but isn't a directory")
-    elif not os.listdir(git.path):
-      # It's empty; that's fine
+    elif check_emptyish(os.listdir(git.path)):
+      # It's empty(ish); that's fine
       pass
     elif not os.path.isdir(os.path.join(git.path, ".git")):
       raise SimpleError("Repo directory exists, isn't empty, but doesn't "
@@ -1169,16 +1327,52 @@ class App (object):
 
     remotes = self._get_conf_remotes(rr)
     rremotes = git.remotes
+    generated_keys = {} # remote->display_key_info
+    def show_new_keys ():
+      for f in generated_keys.values():
+        f()
+    self.add_command(show_new_keys, priority=FINISH_PRIORITY)
     for remote in set(remotes.keys()).difference(rremotes.keys()):
       llog.info("Adding missing remote '%s' -> %s", remote, remotes[remote])
+
+      dk = self._get_conf_remote_uses_deploy_key(rr, remote)
+      if dk:
+        if not git.has_deploy_key(remote):
+          if dk is not True:
+            # dk files!  Use them!
+            def copyit (src, dst):
+              if os.path.exists(dst):
+                raise SimpleError("Key file already exists")
+              with open(src, "r") as infile:
+                data = infile.read()
+              with os.fdopen(os.open(dst, os.O_WRONLY|os.O_CREAT, mode=0o600), "w") as o:
+                o.write(data)
+
+            copyit(dk+".pub", git.get_keyfile_base(remote)+".pub")
+            copyit(dk+".private", git.get_keyfile_base(remote)+".private")
+            llog.debug("Copied existing keys for remote '%s'", remote)
+          else:
+            # Generate new ones
+            display_info = self._gen_deploy_key(git, rname, rr, remote)
+            if display_info: generated_keys[remote] = display_info
       git.run_show(["remote","add",remote,remotes[remote]], check=True)
+
     for remote in set(remotes.keys()).difference(rremotes.keys()):
+      if remote in generated_keys:
+        if sys.stdout.isatty():
+          llog.info("Need to set up deploy key for remote %s", remote)
+          generated_keys.pop(remote)()
+          input("Press enter after setting the deploy key on the server\n"
+                "(or replacing the one in the repository). ")
+      sshcmd = self._get_ssh_cmd(git,rname,rr,remote)
+      add_env = {'GIT_SSH_COMMAND':sshcmd} if sshcmd else None
+
       cmd = ["fetch",remote]
       if rr.get_bool("no_tags"): cmd.append("--no-tags")
-      r = git.run_show(cmd, check=False)
+      r = git.run_show(cmd, check=False, add_env=add_env)
       if r == 0:
         llog.info("Fetched new remote '%s'", remote)
-        r = git.run_show(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False)
+        r = git.run_show(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False, add_env=add_env)
         if r == 0:
           llog.info("Fetched new remote tags for '%s'", remote)
         else:
@@ -1344,6 +1538,16 @@ class Git (object):
   @property
   def conf (self):
     return GitConfigProxy(self)
+
+  def get_keyfile_base (self, remote):
+    keyfile_base = os.path.join(self.path, "depz_deploy_key")
+    keyfile_base += "." + remote.replace(" ","-")
+    return keyfile_base
+
+  def has_deploy_key (self, remote):
+    keyfile_base = self.get_keyfile_base(remote)
+    return (os.path.exists(keyfile_base+".private")
+            and os.path.exists(keyfile_base+".pub"))
 
   @property
   def toplevel_directory (self):
