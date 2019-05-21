@@ -1351,8 +1351,11 @@ class Git (object):
     return self.run_capture("rev-parse --show-toplevel", check=True)
 
   def check_toplevel (self):
-    if self.path != self.toplevel_directory:
-      raise RuntimeError("Bad repository path")
+    try:
+      if self.path != self.toplevel_directory:
+        raise SimpleError("Bad repository path")
+    except Exception:
+      raise SimpleError("Bad repository path")
 
   @property
   def all_refs (self):
