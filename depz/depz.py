@@ -1267,8 +1267,7 @@ class App (object):
               if t < ga[2]: t += 1    # Round seconds up
               t = (59 + t) // 60 * 60 # Round minutes up
               t = "%s +0000" % (t,)
-              env = os.environ.copy()
-              env["GIT_COMMITTER_DATE"] = t
+              add_env = {"GIT_COMMITTER_DATE": t}
 
               git.run_hide(["checkout","-b",checkout], check=True)
               git.run_hide("add .", check=True)
@@ -1284,7 +1283,7 @@ class App (object):
                             "commit","-m",message,
                             "--author=depz <depz@depz.invalid>",
                             "--date",t],
-                           check=True, env=env)
+                           check=True, add_env=add_env)
             except Exception:
               llog.error("Exception while trying to initialze from archive "
                          "'%s'", init_archive)
