@@ -671,6 +671,7 @@ from collections import OrderedDict
 import re
 is_hex = re.compile("^[0-9a-fA-F]+$").match
 
+FINISH_PRIORITY = 99999999
 
 class App (object):
   def __init__ (self):
@@ -704,7 +705,7 @@ class App (object):
     self.all_repos = all_repos
 
     self.done_commands = []
-    self.commands = []
+    self.commands = {}
 
     self.error_repos = set()
 
@@ -746,23 +747,29 @@ class App (object):
     self.run_commands()
 
   def run_commands (self):
-    while self.commands:
+    while True:
       c = self.pop_command()
+      if c is None: break
       c()
 
   def add_error_repo (self, r):
     self.error_repos.add(r)
 
   def pop_command (self):
-    c = self.commands.pop(0)
-    self.done_commands.append(c)
-    return c
+    priorities = sorted(self.commands.keys())
+    for p in priorities:
+      if len(self.commands[p]):
+        c = self.commands[p].pop(0)
+        self.done_commands.append(c)
+        return c
+    return None
 
-  def add_command (self, c):
-    self.commands.append(c)
-
-  def set_next_command (self, c):
-    self.commands.insert(0, c)
+  def add_command (self, c, priority=0):
+    if priority > FINISH_PRIORITY:
+      raise RuntimeError("Command priority too high")
+    if priority not in self.commands:
+      self.commands[priority] = []
+    self.commands[priority].append(c)
 
   def _get_conf_remotes (self, rr):
     remotes = {k.split(None,1)[1]:v for k,v in rr.items()
