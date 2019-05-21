@@ -430,6 +430,7 @@ import shutil
 import tempfile
 import os
 import hashlib
+import datetime
 
 def get_archive (url, dst, denest=True, sha1=None, sha256=None, sha512=None):
   """
@@ -447,6 +448,7 @@ def get_archive (url, dst, denest=True, sha1=None, sha256=None, sha512=None):
   """
   denest_dir = None
   final_url = None
+  timestamp = None # ~ Latest modification time
 
   if not os.path.isdir(dst):
     raise RuntimeError("Destination directory '%s' does not exist" % (dst,))
@@ -517,7 +519,18 @@ def get_archive (url, dst, denest=True, sha1=None, sha256=None, sha512=None):
         else:
           shutil.copy2(full_src_element, full_dst_element)
 
-  return (denest_dir,final_url or url)
+      files = glob.glob(os.path.join(temp_dir, '**'), recursive=True)
+      for f in files:
+        if os.path.join(f,'') == os.path.join(temp_dir,''): continue
+        t = os.stat(f).st_mtime
+        if timestamp is None or t > timestamp:
+          timestamp = t
+
+  dt = None
+  if timestamp is not None:
+    epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+    dt = epoch + datetime.timedelta(seconds=timestamp)
+  return (denest_dir,final_url or url,timestamp,dt)
 
 
 class SimpleError (RuntimeError):
