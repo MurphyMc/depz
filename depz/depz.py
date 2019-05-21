@@ -1406,11 +1406,11 @@ class Git (object):
     track = track.rsplit(" [",1)[0]
     return track
 
-  def run_hide (self, cmd, check=True):
+  def run_hide (self, cmd, check=True, env=None):
     if isinstance(cmd, str): cmd = cmd.split()
     cmd.insert(0, "git")
     r = subprocess.run(cmd, stdout=_DEVNULL, stderr=_DEVNULL, cwd=self.path,
-                       check=check)
+                       check=check, env=env)
     return r.returncode
 
   def run_show (self, cmd, check=True):
