@@ -1319,10 +1319,32 @@ class App (object):
 import subprocess
 _DEVNULL = open(os.devnull, "w")
 
+class GitConfigProxy (object):
+  def __init__ (self, git):
+    self._git = git
+
+  def __setitem__ (self, key, value):
+    self._git.run_hide(["config",key,value], check=True)
+
+  def __getitem__ (self, key):
+    r = self.get(key)
+    if r is None: raise KeyError(key)
+
+  def get (self, key, default=None):
+    try:
+      return self._git.run_capture(["config",key], check=True)
+    except Exception:
+      return default
+
+
 class Git (object):
   def __init__ (self, path):
     assert os.path.isabs(path)
     self.path = os.path.abspath(path)
+
+  @property
+  def conf (self):
+    return GitConfigProxy(self)
 
   @property
   def toplevel_directory (self):
