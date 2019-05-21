@@ -95,8 +95,12 @@ class Section (object):
     return self.dict.get(*args, **kw)
 
   def get_bool (self, key, default=False):
-    v = str(self.get(key, default)).lower()
-    return v in "yes true on 1 enable enabled ok okay +".split()
+    return _to_bool(self.get(key, default))
+
+
+def _to_bool (v):
+  v = str(v).lower()
+  return v in "yes true on 1 enable enabled ok okay +".split()
 
 
 """
@@ -578,7 +582,7 @@ def init_config ():
   # It'd be nice if this used Config() more normally, but this is pretty hacky
 
   cl = config["depz"].get("color_log", None)
-  if cl is not None and cl.lower() in "yes on true 1 enable enabled + ok okay".split():
+  if cl is not None and _to_bool(cl):
     try:
       import coloredlogs
       coloredlogs.DEFAULT_LOG_FORMAT = ('%(levelname)-8s %(asctime)s '
