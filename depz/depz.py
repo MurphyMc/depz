@@ -1434,33 +1434,47 @@ class Git (object):
     track = track.rsplit(" [",1)[0]
     return track
 
-  def run_hide (self, cmd, check=True, env=None):
+  @staticmethod
+  def _make_env (env, add_env):
+    if env is None and add_env is None: return None
+    if env is None:
+      env = os.environ
+    if add_env:
+      env = env.copy()
+      env.update(add_env)
+    return env
+
+  def run_hide (self, cmd, check=True, env=None, add_env=None):
+    env = self._make_env(env, add_env)
     if isinstance(cmd, str): cmd = cmd.split()
     cmd.insert(0, "git")
     r = subprocess.run(cmd, stdout=_DEVNULL, stderr=_DEVNULL, cwd=self.path,
                        check=check, env=env)
     return r.returncode
 
-  def run_show (self, cmd, check=True):
+  def run_show (self, cmd, check=True, env=None, add_env=None):
+    env = self._make_env(env, add_env)
     if isinstance(cmd, str): cmd = cmd.split()
     cmd.insert(0, "git")
-    r = subprocess.run(cmd, cwd=self.path, check=check)
+    r = subprocess.run(cmd, cwd=self.path, check=check, env=env)
     return r.returncode
 
-  def run (self, cmd, stdouterr_together=False, check=True):
+  def run (self, cmd, stdouterr_together=False, check=True, env=None, add_env=None):
+    env = self._make_env(env, add_env)
     if isinstance(cmd, str): cmd = cmd.split()
     cmd.insert(0, "git")
     sout = subprocess.PIPE
     serr = subprocess.PIPE
     if stdouterr_together: serr = subprocess.STDOUT
-    r = subprocess.run(cmd, universal_newlines=True, stdout=sout, stderr=serr, cwd=self.path, check=check)
+    r = subprocess.run(cmd, universal_newlines=True, stdout=sout, stderr=serr, cwd=self.path, check=check, env=env)
     return r
 
-  def run_capture (self, cmd, check=True):
+  def run_capture (self, cmd, check=True, env=None, add_env=None):
+    env = self._make_env(env, add_env)
     if isinstance(cmd, str): cmd = cmd.split()
     cmd.insert(0, "git")
 
-    r = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.path, check=check)
+    r = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.path, check=check, env=env)
     if r.returncode != 0: return ""
     return r.stdout.strip()
 
