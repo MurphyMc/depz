@@ -1043,6 +1043,7 @@ class App (object):
     proxy = rr.val
 
     git = Git(proxy.full_directory)
+    git.check_toplevel()
 
     if not os.path.isdir(os.path.join(git.path, ".git")):
       raise SimpleError("Does not seem to be a git repository")
