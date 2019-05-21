@@ -1249,8 +1249,23 @@ class App (object):
             sha256 = rr.get("init_archive_sha256",None)
             sha512 = rr.get("init_archive_sha512",None)
             try:
-              get_archive(init_archive, git.path,
-                          sha1=sha1,sha256=sha256,sha512=sha512)
+              ga = get_archive(init_archive, git.path,
+                               sha1=sha1,sha256=sha256,sha512=sha512)
+              # Originally, I was going to do much more "rounding" here to try
+              # to ensure that even systems with pretty broken filesystem
+              # times arrived at the same answer.  But with modern systems,
+              # hopefully this just isn't a problem.  So let's just round to
+              # the minute and see what happens.
+              # (If there was a good way to extract the time from the archive
+              # itself, that'd be even better, but it looked like it'd be
+              # harder than seemed worthwhile at the moment.)
+              t = int(ga[2])
+              if t < ga[2]: t += 1    # Round seconds up
+              t = (59 + t) // 60 * 60 # Round minutes up
+              t = "%s +0000" % (t,)
+              env = os.environ.copy()
+              env["GIT_COMMITTER_DATE"] = t
+
               git.run_hide(["checkout","-b",checkout], check=True)
               git.run_hide("add .", check=True)
               message = "Initial commit from archive by depz\n"
@@ -1263,8 +1278,9 @@ class App (object):
               git.run_hide(["-c","user.name=depz",
                             "-c","user.email=depz@depz.invalid",
                             "commit","-m",message,
-                            "--author=depz <depz@depz.invalid>"],
-                           check=True)
+                            "--author=depz <depz@depz.invalid>",
+                            "--date",t],
+                           check=True, env=env)
             except Exception:
               llog.error("Exception while trying to initialze from archive "
                          "'%s'", init_archive)
