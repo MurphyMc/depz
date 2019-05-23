@@ -1373,7 +1373,7 @@ class App (object):
       r = git.run_show(cmd, check=False, add_env=add_env)
       if r == 0:
         llog.info("Fetched new remote '%s'", remote)
-        r = git.run_show(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False, add_env=add_env)
+        r = git.run_hide(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False, add_env=add_env)
         if r == 0:
           llog.info("Fetched new remote tags for '%s'", remote)
         else:
