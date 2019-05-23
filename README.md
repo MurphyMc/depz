@@ -13,6 +13,27 @@ the sub-repositories, you may be simultaneously working with your own (or an
 organizational) fork as well as trying pulling in changes from upstream,
 etc.
 
+Here's a quick feature list:
+
+* Flexible config files let you define and group repositories
+* You can have "local" config files which override settings (e.g., to add
+  an additional remote for your own fork)
+* Can clone git, Mercurial, and Bazaar repositories
+* Can initialize a repository from a zip/tgz archive somewhere, including
+  creating a stable first commit for it so that if you and others all do it
+  and then make commits, you have shared history
+* Can automatically generate and assist you with repository-specific (and
+  optionally read-only) GitHub deploy keys, which are a nice option when you
+  are working with private repositories on an untrusted machine where you
+  don't want to put your credentials
+* Can check to see which local repositories are ahead/behind remote
+  repositories
+* Fast-forward merge subrepositories with a single command
+* Can monitor other *local* branches (so that you can fast-forward merge
+  branches which were *pushed* from elsewhere)
+
+## The Basics
+
 A project will generally have one or more .depz files which describe the
 sub-repositories and sketch out how they should be worked with.  This file
 will be stored in the project's main repository.  After cloning that repo,
