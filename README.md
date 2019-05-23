@@ -471,6 +471,7 @@ a configuration file.  The section should be a child section of the parent
 | monitor\_branch   | Local branches to monitor for changes                 |
 | update\_skip      | When set, don't include this repo when doing --update |
 |fast\_forward\_skip| When set, don't include when doing --fast-forward     |
+| skip              | When set, don't include this repo ever                |
 | no\_tags          | Don't download normal tags                            |
 | type              | Repository type (currently only git)                  |
 | remote <foo>      | Configures a git remote for the repo                  |
