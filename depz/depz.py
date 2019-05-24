@@ -585,6 +585,12 @@ def init_config ():
   if cl is not None and _to_bool(cl):
     try:
       import coloredlogs
+      try:
+        def_ln = coloredlogs.DEFAULT_FIELD_STYLES['levelname']
+        if def_ln['color'] == 'black':
+          def_ln['bright'] = True
+      except Exception as e:
+        pass
       coloredlogs.DEFAULT_LOG_FORMAT = ('%(levelname)-8s %(asctime)s '
                                         '%(name)-20s %(message)s')
       coloredlogs.DEFAULT_DATE_FORMAT = '%H:%M:%S'
