@@ -661,7 +661,7 @@ def main ():
      const=False, default=None, nargs='?',
      help="Can be true (default) or false.  Attempts to force using or not "
           "using deploy keys.  Be careful.")
-  p.add_argument("--set", "-S", nargs="*", action='append',
+  p.add_argument("--set", "-S", nargs="*", action='append', default=[],
      help="Set a config value, e.g., '--set [section]key=value'.")
 
 
