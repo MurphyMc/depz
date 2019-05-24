@@ -403,9 +403,11 @@ class Config (object):
       overrides["_FILE_"] = filename
       overrides["_DIR_"] = os.path.dirname(filename)
     if section in self._section_files:
-      secfile = self._section_files[section][0]
-      overrides["_SECTION_FILE_"] = secfile
-      overrides["_SECTION_DIR_"] = os.path.dirname(secfile)
+      secfile = [x for x in self._section_files[section] if x is not None]
+      if secfile:
+        secfile = secfile[0]
+        overrides["_SECTION_FILE_"] = secfile
+        overrides["_SECTION_DIR_"] = os.path.dirname(secfile)
 
     #self._cp._sections = self._cp._sections.copy()
     #if section not in self._cp._sections: self._cp._sections[section] = {}
@@ -651,6 +653,8 @@ def main ():
      const=False, default=None, nargs='?',
      help="Can be true (default) or false.  Attempts to force using or not "
           "using deploy keys.  Be careful.")
+  p.add_argument("--set", "-S", nargs="*", action='append',
+     help="Set a config value, e.g., '--set [section]key=value'.")
 
 
   args = p.parse_args()
@@ -709,6 +713,23 @@ class App (object):
     #config.entry_hook = _directory_hook
 
     config.try_include_files(os.path.expanduser("~/.depzconfig"))
+
+    commandline_section = ""
+    for set_args in args.set:
+      # This is sort of goofy, but it lets us handle what come across as two
+      # distinct cases:
+      #  * depz --set=[s1]k1=v1 --set=[s2]k2=v2
+      #  * depz --set [s1]k1=v1 [s2]k2=v2
+      if not isinstance(set_args, list): set_args = [set_args]
+      for set_arg in set_args:
+        if not set_arg.startswith("["):
+          raise RuntimeError("Expected --set argument to start with '['")
+        if not ']' in set_arg:
+          raise RuntimeError("Expected --set argument to start with '['")
+        set_arg = set_arg.replace("]", "]\n")
+        commandline_section += set_arg + "\n"
+    if commandline_section:
+      config.include_string(commandline_section)
 
     config.include_string(DEFAULT_REPO)
 
