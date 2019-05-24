@@ -568,9 +568,20 @@ def strsplit (s, *args, **kw):
   return s.split(*args, **kw)
 
 
+import logging
+
+cur_log_level = logging.INFO
+def set_log_level (level):
+  if isinstance(level, str):
+    level = getattr(logging, level.upper())
+  global cur_log_level
+  cur_log_level = level
+  _set_log_level(level)
+
+
 def init_config ():
-  global set_log_level
-  set_log_level = lambda l: log.setLevel(getattr(logging, l.upper()))
+  global _set_log_level
+  _set_log_level = log.setLevel
 
   config = Config()
   config.try_include_files(os.path.expanduser("~/.depzconfig"))
@@ -598,16 +609,13 @@ def init_config ():
       coloredlogs.DEFAULT_DATE_FORMAT = '%H:%M:%S'
       coloredlogs.install()
       coloredlogs.set_level(logging.DEBUG)
-      set_log_level = lambda l: coloredlogs.set_level(l.upper())
+      _set_log_level = coloredlogs.set_level
     except Exception:
       pass
 
   ll = config["depz"].get("log_level", None)
   if ll is not None:
     set_log_level(ll)
-
-
-import logging
 
 
 import argparse
@@ -1397,12 +1405,12 @@ class App (object):
 
       cmd = ["fetch",remote]
       if rr.get_bool("no_tags"): cmd.append("--no-tags")
-      r = git.run_show(cmd, check=False, add_env=add_env)
+      r = git.run_auto(cmd, check=False, add_env=add_env, log_level=logging.INFO)
       if r == 0:
         llog.info("Fetched new remote '%s'", remote)
         r = git.run_hide(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False, add_env=add_env)
         if r == 0:
-          llog.info("Fetched new remote tags for '%s'", remote)
+          llog.debug("Fetched new remote tags for '%s'", remote)
         else:
           llog.warn("Failed to fetch new remote tags for '%s'", remote)
       else:
@@ -1426,13 +1434,13 @@ class App (object):
           llog.warn("Checkout branch '%s' exists but does not track an "
                     "expected remote and does not seem to reference a remote tag")
         else:
-          git.run_show(["checkout",checkout], check=True)
+          git.run_auto(["checkout",checkout], check=True)
       else:
         def check_branch ():
           for rem,is_tag in remote_prefs:
             r = git.run(["branch",checkout,rem], stdouterr_together=True, check=False)
             if r.returncode == 0:
-              git.run(["checkout", checkout], check=True)
+              git.run_auto(["checkout", checkout], check=True)
               llog.info("Checked out %s '%s'", "tag" if is_tag else "branch", checkout)
               break
             llog.debug("Couldn't create local branch for checkout '%s'", rem)
@@ -1699,6 +1707,18 @@ class Git (object):
       env = env.copy()
       env.update(add_env)
     return env
+
+  def run_auto (self, *args, **kw):
+    """
+    Either does run_show or run_hide depending on the log level
+
+    log_level should be the level at which you want it to show (defaults to INFO)
+    """
+    log_at = kw.pop("log_level", logging.INFO)
+    f = self.run_show
+    if cur_log_level > log_at:
+      f = self.run_hide
+    return f(*args, **kw)
 
   def run_hide (self, cmd, check=True, env=None, add_env=None):
     env = self._make_env(env, add_env)
