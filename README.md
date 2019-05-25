@@ -62,15 +62,26 @@ and Bazaar repositories (see later sections in this document).
 depz requires Python 3.5 and git 2.7, neither of which are particularly
 new anymore.  If you want to use Mercurial repositories, you will also want
 git-remote-hg.  If you want to work with Bazaar repositories, you will want
-git-remote-bzr.  On Ubuntu, you can install these with:
+git-remote-bzr.  On Ubuntu, 16.04 and 19.04, you can install these with:
 ```
 sudo apt install git-remote-hg git-remote-bzr
 ```
 
-If you'd like colored logs, you'll need to tweak your configuration (see the
-next section), but first you'll also want to do:
+For some versions of Ubuntu (including 18.04, sadly), git-remote-hg is not
+packaged.  In these cases, you can install it pretty easily by hand.  The
+[Debian repository](https://salsa.debian.org/debian/git-remote-hg) is
+probably a good place to get it.
+
+Colored logs can be beneficial when viewing depz's output.  If you'd like to
+turn them on, you'll need to tweak your configuration (see the next section),
+but first you'll need to install the coloredlogs package.  For Ubuntu 18.04
+and later, you can do this with:
 ```
-sudo apt install python-coloredlogs
+sudo apt install python3-coloredlogs
+```
+Otherwise, you can install using pip, e.g. with:
+```
+pip3 install --user coloredlogs
 ```
 
 You can install depz using the included setup.py.  To install it from git
