@@ -569,11 +569,15 @@ def strsplit (s, *args, **kw):
 
 
 import logging
+SPAM = 5
 
 cur_log_level = logging.INFO
 def set_log_level (level):
   if isinstance(level, str):
-    level = getattr(logging, level.upper())
+    if level.upper() == "SPAM":
+      level = SPAM
+    else:
+      level = getattr(logging, level.upper())
   global cur_log_level
   cur_log_level = level
   _set_log_level(level)
