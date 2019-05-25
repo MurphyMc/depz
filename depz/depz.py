@@ -569,6 +569,7 @@ def strsplit (s, *args, **kw):
 
 
 import logging
+log_is_tty = False
 SPAM = 5
 
 cur_log_level = logging.INFO
@@ -627,6 +628,8 @@ import argparse
 def main ():
   global log
   global args
+  global log_is_tty
+  log_is_tty = sys.stderr.isatty()
 
   logging.basicConfig(level=logging.DEBUG)
   log = logging.getLogger("depz")
@@ -1445,13 +1448,13 @@ class App (object):
           llog.warn("Checkout branch '%s' exists but does not track an "
                     "expected remote and does not seem to reference a remote tag")
         else:
-          git.run_auto(["checkout",checkout], check=True)
+          git.run_checkout(["checkout",checkout], check=True)
       else:
         def check_branch ():
           for rem,is_tag in remote_prefs:
             r = git.run(["branch",checkout,rem], stdouterr_together=True, check=False)
             if r.returncode == 0:
-              git.run_auto(["checkout", checkout], check=True)
+              git.run_checkout(["checkout", checkout], check=True)
               llog.info("Checked out %s '%s'", "tag" if is_tag else "branch", checkout)
               break
             llog.debug("Couldn't create local branch for checkout '%s'", rem)
@@ -1460,12 +1463,14 @@ class App (object):
           return True
 
         def check_hash ():
+          #TODO: I guess this is just a simple check that the hash exists?
+          #      There's probably a faster/better way.
           r = git.run_hide(["checkout",checkout], check=False)
           if r != 0: return False
           h = git.current_hash
           ch = "checkout_" + h
           if ch in git.local_branches:
-            git.run_hide(["checkout",ch], check=True)
+            git.run_checkout(["checkout",ch], check=True)
             if git.current_hash != h:
               raise SimpleError("Head of branch %s doesn't have hash %s!",
                                 ch, h)
@@ -1732,6 +1737,23 @@ class Git (object):
     if cur_log_level > log_at:
       f = self.run_hide
     return f(*args, **kw)
+
+  def run_checkout (self, cmd, *args, **kw):
+    """
+    Meant for running git checkout
+
+    If quiet=True (the default), it prints progress if on a terminal, but is
+    otherwise quiet (as in git checkout -q).
+    """
+    if isinstance(cmd, str): cmd = cmd.split()
+    if cmd[0] != "checkout": raise RuntimeError("Bad checkout command")
+    quiet = kw.pop("quiet", True)
+    if quiet:
+      if log_is_tty: cmd.insert(1, "--progress")
+      # Would rather not check log_is_tty here, but in general, we don't know
+      # so I don't know what the clean alternative is.
+      cmd.insert(1, "-q")
+    return self.run_auto(cmd, *args, **kw)
 
   def run_hide (self, cmd, check=True, env=None, add_env=None):
     env = self._make_env(env, add_env)
