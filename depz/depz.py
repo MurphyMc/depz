@@ -1664,7 +1664,9 @@ class Git (object):
   def is_empty_branch (self):
     r = self.run_capture("status --porcelain -b", check=False).split("\n",1)[0]
     if not r.startswith("## "): raise RuntimeError("Bad repository?")
-    return r.startswith("## Initial commit on ")
+    if r.startswith("## Initial commit on "): return True # git 2.7.4
+    if r.startswith("## No commits yet on "): return True # git 2.20.1
+    return False
 
   @property
   def current_branch (self):
