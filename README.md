@@ -70,7 +70,10 @@ sudo apt install git-remote-hg git-remote-bzr
 For some versions of Ubuntu (including 18.04, sadly), git-remote-hg is not
 packaged.  In these cases, you can install it pretty easily by hand.  The
 [Debian repository](https://salsa.debian.org/debian/git-remote-hg) is
-probably a good place to get it.
+probably a good place to get it.  Even easier, use pip:
+```
+sudo pip install git-remote-hg
+```
 
 Colored logs can be beneficial when viewing depz's output.  If you'd like to
 turn them on, you'll need to tweak your configuration (see the next section),
