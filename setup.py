@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='depz',
+    python_requires='>=3.5',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
