@@ -1407,14 +1407,21 @@ class App (object):
       sshcmd = self._get_ssh_cmd(git,rname,rr,remote)
       add_env = {'GIT_SSH_COMMAND':sshcmd} if sshcmd else None
 
-      cmd = ["fetch",remote]
-      if rr.get_bool("no_tags"): cmd.append("--no-tags")
+      cmd = ["fetch",remote,"--no-tags"]
       r = git.run_auto(cmd, check=False, add_env=add_env, log_level=logging.INFO)
       if r == 0:
         llog.info("Fetched new remote '%s'", remote)
+        if not rr.get_bool("no_tags"):
+          # Fetch again, this time with normal tag behavior
+          r = git.run_hide(["fetch",remote], check=False, add_env=add_env)
+          if r == 0:
+            llog.debug("Fetched tags for '%s'", remote)
+          else:
+            llog.warn("Failed while fetching tags for '%s'", remote)
+        # Fetch again, this time for tags into special remote_tags namespace
         r = git.run_hide(["fetch",remote,"--no-tags","+refs/tags/*:refs/remote_tags/"+remote+"/*"], check=False, add_env=add_env)
         if r == 0:
-          llog.debug("Fetched new remote tags for '%s'", remote)
+          llog.debug("Fetched all remote tags for '%s'", remote)
         else:
           llog.warn("Failed to fetch new remote tags for '%s'", remote)
       else:
