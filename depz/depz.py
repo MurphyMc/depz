@@ -753,7 +753,7 @@ class App (object):
     for repo in args.depz:
       if os.path.isdir(repo):
         files = glob.glob(os.path.join(repo, "*.depz"))
-        log.debug("Adding %s (%s file(s))", repo, len(files))
+        log.debug("Adding %s (%s)", repo, App.pluralize(len(files),"file"))
         config.include_files(*files)
       else:
         log.debug("Adding %s", repo)
@@ -1210,6 +1210,14 @@ class App (object):
     git = Git(rr.val.full_directory)
 
     current_branch = git.current_branch
+    if current_branch is None:
+      llog.warn("No current branch or in a detached HEAD state. ")
+      if "checkout" in rr._dict:
+        llog.warn("Manually 'git checkout " + rr.val.checkout + "' in the repo.")
+      else:
+        llog.warn("Manually 'git checkout master' (or other default branch) in the repo.")
+      return
+
     checkout_branch = rr.val.checkout
 
     # Remove remotes with duplicate URLs by flipping twice
@@ -1235,11 +1243,16 @@ class App (object):
         if ahead==0 and behind==0: continue
         if behind>0: all_current=False
         if ahead>0 and behind>0:
-          llog.warn("Current branch %s is %s commits behind %s (and %s ahead)", branch, behind, c, ahead)
+          llog.warn("Current branch %s is %s behind %s (and %s ahead)", branch, App.pluralize(behind,"commit"), c, ahead)
+          llog.warn("It appears the repository is in a conflicted state with its origin.")
+          llog.warn("If the repo has local changes, manually merge or otherwise resynchronize it.")
+          llog.warn("If the repo doesn't have local changes you can delete it and run 'depz --init' to restore it.")
         elif behind>0:
-          llog.warn("Current branch %s is %s commits behind %s", branch, behind, c)
+          llog.warn("Current branch %s is %s behind %s", branch, App.pluralize(behind,"commit"), c)
+          llog.warn("Use 'depz --ff' to fast-forward and apply those changes.")
         elif ahead>0:
-          llog.info("Current branch %s is %s commits ahead of %s", branch, behind, c)
+          llog.info("Current branch %s is %s ahead of %s", branch, App.pluralize(ahead,"commit"), c)
+          llog.info("You will need to manually push those commits if desired.")
       return success
 
     compares = [r+"/"+current_branch for r in remotes]
@@ -1286,6 +1299,13 @@ class App (object):
     branches = []
 
     current = git.current_branch
+    if current is None:
+      llog.warn("No current branch or in a detached HEAD state. ")
+      if "checkout" in rr._dict:
+        llog.warn("Manually 'git checkout " + rr.val.checkout + "' in the repo.")
+      else:
+        llog.warn("Manually 'git checkout master' (or other default branch) in the repo.")
+      return
     tracking = git.tracking_branch
     if not tracking:
       llog.warn("Current branch '%s' has no tracking branch", current)
@@ -1304,6 +1324,8 @@ class App (object):
         r = git.run_show(["merge","--ff-only",branch], check=False)
         if r != 0:
           llog.error("Fast forward merge failed")
+      else:
+        llog.warn("Could not fast-forward. Check the branch status with 'depz --outdated'.")
 
     for b in branches:
       try_it(b)
@@ -1559,6 +1581,10 @@ class App (object):
         llog.info("Currently on branch '%s' (checkout is '%s')",
                   git.current_branch, proxy.checkout)
 
+  @classmethod
+  def pluralize (cls,count,word):
+    if count==1: return "1 " + word
+    else:        return str(count) + " " + word + "s"
 
 
 import subprocess
