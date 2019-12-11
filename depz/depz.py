@@ -799,19 +799,15 @@ class App (object):
     if 'early' in args.dump or None in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
     self.add_command(self.for_each_repo(self.do_early_sanity_check))
-    if args.init: self.add_command(self.for_each_repo(self.do_init))
+    self.add_command(self.for_each_repo(self.do_init, requested=args.init))
     self.add_command(self.for_each_repo(self.do_sanity_check))
-    if args.set_ssh_cmd:
-      self.add_command(self.for_each_repo(self.do_set_ssh_cmd))
+    self.add_command(self.for_each_repo(self.do_set_ssh_cmd, requested=args.set_ssh_cmd))
 
     if 'late' in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
-    if args.update:
-      self.add_command(self.for_each_repo(self.do_update))
-    if args.outdated:
-      self.add_command(self.for_each_repo(self.do_show_outdated))
-    if args.fast_forward:
-      self.add_command(self.for_each_repo(self.do_fast_forward))
+    self.add_command(self.for_each_repo(self.do_update, requested=args.update))
+    self.add_command(self.for_each_repo(self.do_show_outdated, requested=args.outdated))
+    self.add_command(self.for_each_repo(self.do_fast_forward, requested=args.fast_forward))
 
     self.run_commands()
 
@@ -899,7 +895,8 @@ class App (object):
     cmd = 'ssh -i "%s.private" -F /dev/null' % (keyfile_base,)
     return cmd
 
-  def do_set_ssh_cmd (self, rname, rr):
+  def do_set_ssh_cmd (self, rname, rr, requested):
+    if (not App.is_requested("--set-ssh-cmd",rr,requested)): return
     git = Git(rr.val.full_directory)
 
     for remote in git.remotes.keys():
@@ -1166,7 +1163,8 @@ class App (object):
         log.error("Skipping repo %s because it has no remotes", r)
         self.add_error_repo(r)
 
-  def do_update (self, rname, rr):
+  def do_update (self, rname, rr, requested):
+    if (not App.is_requested("--update",rr,requested)): return
     llog = log.getChild(rname)
     if rr.get_bool("update_skip", False):
       llog.debug("Skipping update due to configuration")
@@ -1205,7 +1203,8 @@ class App (object):
     #elif errs:
     #  llog.info("Some remotes failed to update: %s", " ".join(err_remotes))
 
-  def do_show_outdated (self, rname, rr):
+  def do_show_outdated (self, rname, rr, requested):
+    if (not App.is_requested("--outdated",rr,requested)): return
     llog = log.getChild(rname)
     git = Git(rr.val.full_directory)
 
@@ -1275,7 +1274,8 @@ class App (object):
       else:
         llog.warn("Couldn't tell if anything was outdated.  Are there working remotes?")
 
-  def do_fast_forward (self, rname, rr):
+  def do_fast_forward (self, rname, rr, requested):
+    if (not App.is_requested("--fast-forward",rr,requested) and not App.is_requested("--ff",rr,requested)): return
     llog = log.getChild(rname)
     proxy = rr.val
     if rr.get_bool("fast_forward_skip", False):
@@ -1308,7 +1308,8 @@ class App (object):
     for b in branches:
       try_it(b)
 
-  def do_init (self, rname, rr):
+  def do_init (self, rname, rr, requested):
+    if (not App.is_requested("--init",rr,requested)): return
     llog = log.getChild(rname)
     proxy = rr.val
 
@@ -1560,6 +1561,11 @@ class App (object):
                   git.current_branch, proxy.checkout)
 
 
+  @classmethod
+  def is_requested (cls,option,rr,requested):
+    if requested: return True
+    if not "default_actions" in rr._dict: return False
+    return option in rr.default_actions.split()
 
 import subprocess
 _DEVNULL = open(os.devnull, "w")
