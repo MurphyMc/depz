@@ -796,22 +796,21 @@ class App (object):
     #for m in matched_names:
     #  if m not in all_repos: all_repos[m] = full_list[m]
 
+    allow_default_actions = not (args.init or args.set_ssh_cmd or args.update or args.outdated or args.fast_forward)
+
     if 'early' in args.dump or None in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
     self.add_command(self.for_each_repo(self.do_early_sanity_check))
-    if args.init: self.add_command(self.for_each_repo(self.do_init))
+    self.queue_command("--init", args.init, self.do_init, allow_default_actions)
+
     self.add_command(self.for_each_repo(self.do_sanity_check))
-    if args.set_ssh_cmd:
-      self.add_command(self.for_each_repo(self.do_set_ssh_cmd))
+    self.queue_command("--set-ssh-cmd",args.set_ssh_cmd, self.do_set_ssh_cmd, allow_default_actions)
 
     if 'late' in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
-    if args.update:
-      self.add_command(self.for_each_repo(self.do_update))
-    if args.outdated:
-      self.add_command(self.for_each_repo(self.do_show_outdated))
-    if args.fast_forward:
-      self.add_command(self.for_each_repo(self.do_fast_forward))
+    self.queue_command("--update", args.update, self.do_update, allow_default_actions)
+    self.queue_command("--outdated", args.outdated, self.do_show_outdated, allow_default_actions)
+    self.queue_command("--fast-forward", args.fast_forward, self.do_fast_forward, allow_default_actions, alt_name="--ff")
 
     self.run_commands()
 
@@ -839,6 +838,28 @@ class App (object):
     if priority not in self.commands:
       self.commands[priority] = []
     self.commands[priority].append(c)
+
+  def queue_command (self, name, requested_on_cmd_line, f, allow_default_actions, alt_name=None):
+    if not requested_on_cmd_line and not allow_default_actions: return
+
+    funcname = getattr(f, "__name__", "")
+    if funcname.startswith("do_"):
+      funcname = funcname[3:]
+    else:
+      funcname = None
+
+    if requested_on_cmd_line and funcname: log.debug("Running function %s", funcname)
+    for i,(rname,rr) in enumerate(self.all_repos.items()):
+        if not requested_on_cmd_line:
+          if not allow_default_actions: return
+          if not App._is_default_action(name,rr) and (alt_name is None or not App._is_default_action(alt_name,rr)): return
+          log.debug("Running function %s", funcname)
+        self.add_command(self.repo_command(rname,rr,f))
+
+  @staticmethod
+  def _is_default_action (option,rr):
+    if not "default_actions" in rr.dict: return False
+    return option in rr.default_actions.split()
 
   @staticmethod
   def _get_conf_remotes (rr):
@@ -877,6 +898,19 @@ class App (object):
           log.exception("While processing %s:" % (rname,))
           self.add_error_repo(rname)
     return for_each_func
+
+  def repo_command (self, rname, rr, f, **kw):
+    def command_func ():
+      if rname in self.error_repos: return
+      try:
+        f(rname,rr, **kw)
+      except SimpleError as e:
+        log.error("Error processing %s: %s" % (rname, e))
+        self.add_error_repo(rname)
+      except Exception:
+        log.exception("While processing %s:" % (rname,))
+        self.add_error_repo(rname)
+    return command_func
 
   def do_dump (self, rname, rr, first):
     if first[0] != True:
