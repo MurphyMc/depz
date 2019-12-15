@@ -631,7 +631,7 @@ def main ():
   global log_is_tty
   log_is_tty = sys.stderr.isatty()
 
-  logging.basicConfig(level=logging.DEBUG)
+  logging.basicConfig(level=logging.DEBUG,format="%(levelname)-8s %(name)-20s %(message)s")
   log = logging.getLogger("depz")
 
   init_config()
