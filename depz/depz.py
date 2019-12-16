@@ -801,16 +801,16 @@ class App (object):
     if 'early' in args.dump or None in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
     self.add_command(self.for_each_repo(self.do_early_sanity_check))
-    self.queue_command("--init", args.init, self.do_init, allow_default_actions)
+    self.add_command_per_repo("--init", args.init, self.do_init, allow_default_actions)
 
     self.add_command(self.for_each_repo(self.do_sanity_check))
-    self.queue_command("--set-ssh-cmd",args.set_ssh_cmd, self.do_set_ssh_cmd, allow_default_actions)
+    self.add_command_per_repo("--set-ssh-cmd",args.set_ssh_cmd, self.do_set_ssh_cmd, allow_default_actions)
 
     if 'late' in args.dump:
       self.add_command(self.for_each_repo(self.do_dump, first=[True]))
-    self.queue_command("--update", args.update, self.do_update, allow_default_actions)
-    self.queue_command("--outdated", args.outdated, self.do_show_outdated, allow_default_actions)
-    self.queue_command("--fast-forward", args.fast_forward, self.do_fast_forward, allow_default_actions, alt_name="--ff")
+    self.add_command_per_repo("--update", args.update, self.do_update, allow_default_actions)
+    self.add_command_per_repo("--outdated", args.outdated, self.do_show_outdated, allow_default_actions)
+    self.add_command_per_repo("--fast-forward", args.fast_forward, self.do_fast_forward, allow_default_actions, alt_name="--ff")
 
     self.run_commands()
 
@@ -839,7 +839,7 @@ class App (object):
       self.commands[priority] = []
     self.commands[priority].append(c)
 
-  def queue_command (self, name, requested_on_cmd_line, f, allow_default_actions, alt_name=None):
+  def add_command_per_repo (self, name, requested_on_cmd_line, f, allow_default_actions, alt_name=None):
     if not requested_on_cmd_line and not allow_default_actions: return
 
     funcname = getattr(f, "__name__", "")
