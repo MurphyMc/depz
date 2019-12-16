@@ -842,19 +842,19 @@ class App (object):
   def add_command_per_repo (self, name, requested_on_cmd_line, f, allow_default_actions, alt_name=None):
     if not requested_on_cmd_line and not allow_default_actions: return
 
+    log_message = []
     funcname = getattr(f, "__name__", "")
     if funcname.startswith("do_"):
       funcname = funcname[3:]
+      log_message.append("Running function " + funcname)
     else:
       funcname = None
 
-    if requested_on_cmd_line and funcname: log.debug("Running function %s", funcname)
     for i,(rname,rr) in enumerate(self.all_repos.items()):
         if not requested_on_cmd_line:
           if not allow_default_actions: return
           if not App._is_default_action(name,rr) and (alt_name is None or not App._is_default_action(alt_name,rr)): return
-          log.debug("Running function %s", funcname)
-        self.add_command(self.repo_command(rname,rr,f))
+        self.add_command(self.repo_command(rname,rr,f,log_message))
 
   @staticmethod
   def _is_default_action (option,rr):
@@ -899,10 +899,13 @@ class App (object):
           self.add_error_repo(rname)
     return for_each_func
 
-  def repo_command (self, rname, rr, f, **kw):
+  def repo_command (self, rname, rr, f, log_message, **kw):
     def command_func ():
       if rname in self.error_repos: return
       try:
+        if len(log_message):
+          log.debug(log_message[0])
+          del log_message[0]
         f(rname,rr, **kw)
       except SimpleError as e:
         log.error("Error processing %s: %s" % (rname, e))
