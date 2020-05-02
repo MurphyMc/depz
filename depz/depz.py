@@ -556,6 +556,7 @@ base_directory=${_SECTION_DIR_}
 full_directory=${base_directory}/${directory}
 directory=${name}
 group=default
+fetch_full=True
 
 """
 
@@ -1459,6 +1460,7 @@ class App (object):
       add_env = {'GIT_SSH_COMMAND':sshcmd} if sshcmd else None
 
       cmd = ["fetch",remote,"--no-tags"]
+      if not rr.get_bool("fetch_full"): cmd.append(proxy.checkout)
       r = git.run_auto(cmd, check=False, add_env=add_env, log_level=logging.INFO)
       if r == 0:
         llog.info("Fetched new remote '%s'", remote)

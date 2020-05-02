@@ -481,6 +481,7 @@ a configuration file.  The section should be a child section of the parent
 | full\_directory   | The local directory in which the repository will live |
 | checkout          | The branch or tag to be checked out initially         |
 | checkout\_remote  | List of git remotes from which to try getting the repo|
+| fetch\_full       | Set to False to only fetch the `checkout` branch      |
 | group             | Allows for grouping repos together                    |
 | monitor\_branch   | Local branches to monitor for changes                 |
 | update\_skip      | When set, don't include this repo when doing --update |
@@ -501,6 +502,8 @@ Some notes:
    you can easily set multiple remotes, not all of which will necessarily
    work immediately (e.g., you may want to clone from your own personal fork
    if it exists, but fall back to an upstream repository otherwise).
+* `fetch_full` is True by default and causes depz to fetch *all* branches.
+   If you override it to False, depz will only fetch the checkout branch.
 * `group` is a list of group names.  This lets you group repos.  When depz
    is executed, it defaults to the group "default" and ignores any repo which
    does not list "default" in its groups.  This can be overridden with the
